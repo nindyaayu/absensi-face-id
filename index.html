@@ -427,13 +427,13 @@
     // =====================================
 
     const SCRIPT_URL =
-      'https://script.google.com/macros/s/AKfycbyUvGyMRh_pRz9ZxwF46vNTTDLMSZ2afzD_RJDMDh0AhHfxeH1Azjd-lUUN0iacEhaF/exec';
+      'https://script.google.com/macros/s/AKfycbzUCce7QVITru28Cwdapl2oOJFW_Rw-2LQELVnDLZwQkb5weYPBYelwp_L5aI_YWWFB/exec';
     
     const GOOGLE_CLIENT_ID =
       '192495345084-ef6pe51qtnc1jbkibf2ktgsu3g0di5eu.apps.googleusercontent.com';
     
     const OFFICIAL_EMAIL = 'sglobalindojaya@gmail.com';
-    const DEVICE_AUTH_TOKEN = '<?= deviceAuthToken ?>';
+    // Tidak ada secret perangkat di frontend; endpoint Face ID memverifikasi Google ID token di server.
 
     // =====================================
     // NOTIFIKASI SUARA (TIDAK MENAHAN SCANNER)
@@ -1405,14 +1405,32 @@ function startBackgroundPhotoUpload(imageData, requestId, token) {
 
     function fetchFaceTemplateForQr(token) {
       return new Promise((resolve, reject) => {
-        if (!google.script || !google.script.run) {
-          reject(new Error('Koneksi internal Apps Script tidak tersedia.'));
+        if (!googleIdToken) {
+          reject(new Error('Sesi akun Google resmi belum tersedia.'));
           return;
         }
-        google.script.run
-          .withSuccessHandler(resolve)
-          .withFailureHandler(err => reject(new Error(err && err.message || 'Gagal mengambil template wajah.')))
-          .getFaceTemplateByToken(token, DEVICE_AUTH_TOKEN);
+        const callbackName = 'faceTemplate_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+        const script = document.createElement('script');
+        let settled = false;
+        const finish = (fn, value) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          delete window[callbackName];
+          script.remove();
+          fn(value);
+        };
+        const timeout = setTimeout(() => finish(reject, new Error('Waktu tunggu template wajah habis.')), 15000);
+        window[callbackName] = result => finish(resolve, result);
+        const params = new URLSearchParams({
+          action: 'facetemplate',
+          token: token,
+          id_token: googleIdToken,
+          callback: callbackName
+        });
+        script.src = SCRIPT_URL + '?' + params.toString();
+        script.onerror = () => finish(reject, new Error('Gagal menghubungi layanan template wajah.'));
+        document.body.appendChild(script);
       });
     }
 
